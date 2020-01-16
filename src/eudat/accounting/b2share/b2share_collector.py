@@ -10,6 +10,7 @@ import argparse
 import logging
 import logging.handlers
 import sys
+import os
 
 try:
     from ConfigParser import SafeConfigParser
@@ -43,6 +44,7 @@ class Configuration(object):
 
         print('Configuration file: %s \n' % self.file)
 
+        # Configuration provided with config file
         self.logfile = self.fileparser.get('Logging', 'log_file')
         self.base_url = self.fileparser.get('Report', 'base_url')
         self.domain = self.fileparser.get('Report', 'domain')
@@ -52,6 +54,9 @@ class Configuration(object):
         self.service_uuid = self.fileparser.get('Report', 'service_uuid')
         self.b2share_community = self.fileparser.get('B2SHARE', 'community')
         self.b2share_url = self.fileparser.get('B2SHARE', 'url')
+
+        # Configuration provided with environment variables
+        self.api_token = os.getenv('B2SHARE_SUPERADMIN_API_KEY', None)
 
         # create a file handler
         handler = logging.handlers.RotatingFileHandler(self.logfile, \

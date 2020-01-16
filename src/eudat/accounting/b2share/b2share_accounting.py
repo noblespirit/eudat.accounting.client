@@ -29,6 +29,11 @@ Don't try with value '0', this will loop indefinitely.
 """
 PAGE_SIZE = '100'
 
+"""
+Controls if draft records (i.e. records that are not published) should
+be included in used storage calculation.
+"""
+INCLUDE_DRAFT_RECORDS = True
 
 class B2SHAREAccounting(object):
 
@@ -36,12 +41,76 @@ class B2SHAREAccounting(object):
         self.logger = logger
         self.url = conf.b2share_url
         self.community = conf.b2share_community
+        self.api_token = conf.api_token
+        self.page_size = PAGE_SIZE
+        self.drafts_included = INCLUDE_DRAFT_RECORDS
+
+    def _create_search_url(self):
+        """Creates search url to query for records from B2SHARE REST API."""
+        url = '{url}/api/records/?' \
+              'q=community:{community}&size={page_size}' \
+              .format(
+                  url=self.url,
+                  community=self.community,
+                  page_size=self.page_size)
+
+        # Add an access_token if one is provided
+        if self.api_token:
+            url = url + '&access_token={}'.format(self.api_token)
+
+            # Should draft records be include in search.
+            # NOTE: There is no point in searching 
+            #       for drafts without API Token.
+            #       They won't be listed.
+            if self.drafts_included:
+                url = url + '&drafts=1'
+        return url
+
+    def _calculate_storage_for_draft(self, record):
+        # 1. Fetch links.self to get url of bucket.
+        # 2. Fetch links.files which contains the url of bucket.
+        # 3. Check value of 'size'-key to get bucket size.
+
+        record_size = 0
+
+        if record['links'].get('self'):
+            r = requests.get(record['links']['self'] + '?access_token=' + self.api_token, verify=True)
+            # Check that 200 OK was given
+            # (i.e. access token contains enough permissions)
+            if r.status_code == requests.codes.ok:
+                reply = r.json()
+                if reply['links'].get('files'):
+                    r = requests.get(reply['links']['files'] + '?access_token=' + self.api_token, verify=True)
+                    if r.status_code == requests.codes.ok:
+                        reply = r.json()
+                        record_size = reply.get('size')
+
+        return record_size
+
+    def _calculate_storage_for_record(self, record):
+        record_size = 0
+
+        if record['links'].get('publication'):
+            r = requests.get(record['links']['publication'] + '?access_token=' + self.api_token, verify=True)
+            # Check that 200 OK was given
+            # (i.e. access token contains enough permissions)
+            if r.status_code == requests.codes.ok:
+                reply = r.json()
+                if reply['links'].get('files'):
+                    r = requests.get(reply['links']['files'] + '?access_token=' + self.api_token, verify=True)
+                    if r.status_code == requests.codes.ok:
+                        reply = r.json()
+                        record_size = reply.get('size')
+        return record_size
 
     def report(self, args):
+        """ Get used storage space for community by querying B2SHARE REST API.
 
-        """
         Example of response from B2SHARE 'api/records/?q=community:e1800bc8-780e-4617-a7b6-2312cb6190c4'
-        NOTE: B2SHARE automatically return only 10 results, if no 'size' parameter is used in the search
+        NOTE: - B2SHARE automatically return only 10 results per page, 
+                if no 'size' parameter is used in the search.
+              - No 'access_token' is included in this search.
+              - This search doesn't include draft records.
         {
         "aggregations": {
             "type": {
@@ -89,22 +158,25 @@ class B2SHAREAccounting(object):
         }
         """  # noqa
 
-        url = '{url}/api/records/?' \
-              'q=community:{community}&size={page_size}' \
-              .format(
-                  url=self.url,
-                  community=self.community,
-                  page_size=self.page_size)
+        url = self._create_search_url()
 
         total_amount = 0
         total_hits = 0
         total_pages = 0
 
         try:
+
+            # Check that api_token is valid.
+            # NOTE: Check won't guarantee that api_token has superadmin rights.
+            if self.api_token:
+                token_check_url = '{url}/api/user/?{token}'.format(url=self.url, token=self.api_token)
+                token_check_response = requests.get(token_check_url, verify=True)
+                if token_check_response.json() == '{}':
+                    # Since nothing was returned token is considered to be invalid.
+                    raise requests.exceptions.RequestException('Provide API token is not valid.')
             r = requests.get(url, verify=True)
 
             while r:
-
                 if r.status_code != requests.codes.ok:
                     self.logger.warn(
                         'get community records status code:' + r.status_code)
@@ -112,16 +184,28 @@ class B2SHAREAccounting(object):
                 reply = r.json()
 
                 total_hits = reply['hits']['total']
-
                 total_pages += 1
 
                 for record in reply['hits']['hits']:
-                    if 'files' in record:
-                        for record_file in record['files']:
-                            total_amount += record_file['size']
+                    # Check if record is actually a draft.
+                    if record['metadata']['publication_state'] == 'draft':
+                        record_size = self._calculate_storage_for_draft(record)
+                    else:
+                        # Record has been published
+                        record_size = self._calculate_storage_for_record(record)
+                    
+                    total_amount += record_size
 
+                # Continue if there are multiple pages of search results.
                 if r.links.get('next'):
-                    r = requests.get(r.links['next']['url'], verify=True)
+                    next_url = r.links['next']['url']
+
+                    # NOTE: Due to bug in B2SHARE REST API
+                    #       '&access_token' and '&drafts=1' query params
+                    #       need to be added manually
+                    if self.drafts_included:
+                        next_url = next_url + '&access_token={}&drafts=1'.format(self.api_token)
+                    r = requests.get(next_url, verify=True)
                 else:
                     r = False
 
@@ -131,5 +215,4 @@ class B2SHAREAccounting(object):
         self.logger.debug(
             'get community records request contained {} pages.'.format(
                 total_pages))
-
         return (total_hits, total_amount)
