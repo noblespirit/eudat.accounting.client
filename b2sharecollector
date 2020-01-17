@@ -1,0 +1,13 @@
+#!/bin/sh
+
+APP_DIR=/srv/app
+
+if [ -d $APP_DIR ]; then
+	cd $APP_DIR
+	for filename in $(find conf -iname '*.cfg'); do
+		B2SHAREcollector -t -v -c $filename
+	done
+else
+	echo "$APP_DIR does not exist!"
+fi
+
