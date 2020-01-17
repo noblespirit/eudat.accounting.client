@@ -1,0 +1,7 @@
+version: '2'
+services:
+    accounting:
+        image: eudat.accounting.client
+        restart: "unless-stopped"
+        volumes:
+            - "./b2sharecollector.cfg:/srv/app/conf/b2sharecollector.cfg"
