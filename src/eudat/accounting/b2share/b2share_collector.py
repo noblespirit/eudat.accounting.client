@@ -52,6 +52,7 @@ class Configuration(object):
         self.user = self.fileparser.get('Report', 'user')
         self.password = self.fileparser.get('Report', 'password')
         self.service_uuid = self.fileparser.get('Report', 'service_uuid')
+        self.page_size = self.fileparser.get('Report', 'page_size', fallback=100)
         self.b2share_community = self.fileparser.get('B2SHARE', 'community')
         self.b2share_url = self.fileparser.get('B2SHARE', 'url')
 
@@ -105,7 +106,7 @@ class EUDATAccounting(object):
         """
         Report statistical data on resource consumption to remote server
         """
-        data = self.b2share_accounting.report(args)
+        data = self.b2share_accounting.report()
 
         acctRecords = []
         acctRecords.append(self._toAccountingRecord(data))
