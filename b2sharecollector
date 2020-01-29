@@ -5,9 +5,17 @@ APP_DIR=/srv/app
 if [ -d $APP_DIR ]; then
 	cd $APP_DIR
 	for filename in $(find conf -iname '*.cfg'); do
-		B2SHAREcollector -t -v -c $filename
+		# "run if .success file hasn't been touched in 24h and touch file if successfully run
+		if find "$filename.success" -mmin +1439 |read
+		then
+			source /opt/accounting.client/.env
+			B2SHAREcollector -tv -c $filename
+			if [ $? -eq 0 ]
+			then
+				touch $filename.success
+			fi
+		fi
 	done
 else
 	echo "$APP_DIR does not exist!"
 fi
-

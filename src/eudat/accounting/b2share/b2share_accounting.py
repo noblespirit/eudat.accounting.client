@@ -190,11 +190,7 @@ class B2SHAREAccounting(object):
         }
         """  # noqa
         total_amount_draft, total_hits_draft, total_amount_pub, total_hits_pub = 0, 0, 0, 0
-        try:
-            self._check_api_token_validity()
-            total_amount_draft, total_hits_draft = self._calculate_drafts()
-            total_amount_pub, total_hits_pub = self._calculate_published_records()
-        except requests.exceptions.RequestException as e:
-            self.logger.error('get community records request failed: ' + str(e))
-
+        self._check_api_token_validity()
+        total_amount_draft, total_hits_draft = self._calculate_drafts()
+        total_amount_pub, total_hits_pub = self._calculate_published_records()
         return (total_hits_draft + total_hits_pub, total_amount_draft + total_amount_pub)
