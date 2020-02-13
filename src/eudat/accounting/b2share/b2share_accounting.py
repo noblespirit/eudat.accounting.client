@@ -80,7 +80,7 @@ class B2SHAREAccounting(object):
         record_size = 0
 
         if record['metadata']['open_access']:
-            if record['files']:
+            if record.get('files'):
                 for f in record['files']:
                     record_size += f['size']
         else:
